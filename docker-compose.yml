@@ -1,0 +1,20 @@
+services:
+  db:
+    image: postgres:16
+    container_name: mentor-db
+    environment:
+      POSTGRES_DB: mentor
+      POSTGRES_USER: mentor
+      POSTGRES_PASSWORD: mentor   # solo para desarrollo local
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - mentor-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mentor -d mentor"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  mentor-pgdata:
