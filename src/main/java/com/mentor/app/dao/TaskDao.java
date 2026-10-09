@@ -7,4 +7,6 @@ import java.util.List;
 
 public interface TaskDao extends JpaRepository<Task, Long> {
     List<Task> findAllByOrderByIdDesc();
+
+    List<Task> findByActiveTrueAndRecurrenceRuleIsNotNull();
 }

@@ -10,6 +10,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 
+import java.util.List;
+
 public final class Dtos {
     private Dtos() { }
 
@@ -45,17 +47,24 @@ public final class Dtos {
         }
     }
 
-    // ----- Occurrences / progress -----
-    public record OccurrenceResponse(
+        public record OccurrenceResponse(
             Long id, Long taskId, String taskTitle, String unit, LocalDate date,
-            BigDecimal targetValue, BigDecimal currentValue, double progress, OccurrenceStatus status) {
+            BigDecimal targetValue, BigDecimal currentValue, double progress,
+            OccurrenceStatus status, String recurrenceRule) {
         public static OccurrenceResponse from(TaskOccurrence o, Task t) {
             double progress = o.getTargetValue().signum() == 0 ? 0
                     : o.getCurrentValue().divide(o.getTargetValue(), 4, RoundingMode.HALF_UP).doubleValue();
             return new OccurrenceResponse(o.getId(), o.getTaskId(), t.getTitle(), t.getUnit(),
-                    o.getOccurrenceDate(), o.getTargetValue(), o.getCurrentValue(), progress, o.getStatus());
+                    o.getOccurrenceDate(), o.getTargetValue(), o.getCurrentValue(), progress,
+                    o.getStatus(), t.getRecurrenceRule());
         }
     }
+        // ----- Estadísticas -----
+    public record DayStats(LocalDate date, int total, int done, double progress) { }
+
+    public record StatsResponse(
+            int currentStreak, int bestStreak, int weekDone, int weekTotal, int totalCompleted,
+            LocalDate from, List<DayStats> days) { }
 
     // amount puede ser negativo para corregir un error
     public record ProgressRequest(@NotNull BigDecimal amount, @Size(max = 255) String note) { }

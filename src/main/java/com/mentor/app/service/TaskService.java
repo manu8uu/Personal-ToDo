@@ -21,6 +21,7 @@ public class TaskService {
     private final TaskDao tasks;
     private final GoalDao goals;
     private final TaskOccurrenceDao occurrences;
+    private final RecurrenceService recurrence;
 
     @Transactional(readOnly = true)
     public List<Task> list() {
@@ -32,23 +33,29 @@ public class TaskService {
         Task t = new Task();
         apply(t, r);
         t = tasks.save(t);
-        // tarea ocasional: una sola ocurrencia. Las recurrentes se generan en la Fase 4
+
         if (t.getRecurrenceRule() == null) {
+            // tarea ocasional: una sola ocurrencia
             TaskOccurrence o = new TaskOccurrence();
             o.setTaskId(t.getId());
             o.setOccurrenceDate(t.getStartDate());
             o.setTargetValue(t.getTargetValue());
             occurrences.save(o);
+        } else {
+            recurrence.generateFor(t, LocalDate.now());
         }
         return t;
     }
 
-    // edita la plantilla, no toca las ocurrencias que ya existen
+    // edita la plantilla; las ocurrencias que ya existen no se tocan
     @Transactional
     public Task update(Long id, TaskRequest r) {
         Task t = tasks.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tarea no encontrada"));
         apply(t, r);
+        if (t.getRecurrenceRule() != null) {
+            recurrence.generateFor(t, LocalDate.now());
+        }
         return t;
     }
 
@@ -68,11 +75,23 @@ public class TaskService {
         if (r.endDate() != null && r.endDate().isBefore(start)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "endDate no puede ser anterior a startDate");
         }
+
+        String rule = r.recurrenceRule() == null || r.recurrenceRule().isBlank()
+                ? null
+                : r.recurrenceRule().trim().toUpperCase();
+        if (rule != null) {
+            try {
+                Recurrence.parse(rule, start);
+            } catch (IllegalArgumentException e) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+            }
+        }
+
         t.setGoalId(r.goalId());
         t.setTitle(r.title().trim());
         t.setUnit(r.unit().trim());
         t.setTargetValue(r.targetValue());
-        t.setRecurrenceRule(r.recurrenceRule() == null || r.recurrenceRule().isBlank() ? null : r.recurrenceRule().trim());
+        t.setRecurrenceRule(rule);
         t.setStartDate(start);
         t.setEndDate(r.endDate());
         if (r.active() != null) {
