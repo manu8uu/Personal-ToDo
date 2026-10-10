@@ -17,6 +17,10 @@ public interface TaskOccurrenceDao extends JpaRepository<TaskOccurrence, Long> {
 
     List<TaskOccurrence> findByOccurrenceDateLessThanEqualOrderByOccurrenceDateAsc(LocalDate date);
 
+    boolean existsByTaskIdAndStatusNot(Long taskId, OccurrenceStatus status);
+
+    void deleteByTaskIdAndOccurrenceDateGreaterThanEqual(Long taskId, LocalDate date);
+
     @Modifying(clearAutomatically = true)
     @Query("update TaskOccurrence o set o.status = :newStatus "
             + "where o.status = :oldStatus and o.occurrenceDate < :before")
@@ -24,6 +28,4 @@ public interface TaskOccurrenceDao extends JpaRepository<TaskOccurrence, Long> {
             @Param("oldStatus") OccurrenceStatus oldStatus,
             @Param("newStatus") OccurrenceStatus newStatus,
             @Param("before") LocalDate before);
-
-
 }

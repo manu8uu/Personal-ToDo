@@ -1,3 +1,3 @@
 package com.mentor.app.domain;
 
-public enum OccurrenceStatus { PENDING, DONE, MISSED }
+public enum OccurrenceStatus { PENDING, DONE, MISSED, SKIPPED }

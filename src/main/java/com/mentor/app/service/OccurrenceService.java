@@ -34,7 +34,11 @@ public class OccurrenceService {
         if (to.isBefore(from)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "'to' no puede ser anterior a 'from'");
         }
-        return toResponses(occurrences.findByOccurrenceDateBetweenOrderByOccurrenceDateAscIdAsc(from, to));
+        List<TaskOccurrence> visible = occurrences
+                .findByOccurrenceDateBetweenOrderByOccurrenceDateAscIdAsc(from, to).stream()
+                .filter(o -> o.getStatus() != OccurrenceStatus.SKIPPED)
+                .toList();
+        return toResponses(visible);
     }
 
     @Transactional
@@ -42,8 +46,10 @@ public class OccurrenceService {
         if (r.amount().signum() == 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "amount no puede ser 0");
         }
-        TaskOccurrence o = occurrences.findById(occurrenceId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Ocurrencia no encontrada"));
+        TaskOccurrence o = find(occurrenceId);
+        if (o.getStatus() == OccurrenceStatus.SKIPPED) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Ocurrencia no encontrada");
+        }
 
         ProgressEntry entry = new ProgressEntry();
         entry.setOccurrenceId(o.getId());
@@ -55,6 +61,28 @@ public class OccurrenceService {
         o.setCurrentValue(newValue);
         o.setStatus(newValue.compareTo(o.getTargetValue()) >= 0 ? OccurrenceStatus.DONE : OccurrenceStatus.PENDING);
         return toResponses(List.of(o)).get(0);
+    }
+
+    // omite un día de una tarea recurrente; si la tarea es ocasional, la elimina
+    @Transactional
+    public void skip(Long occurrenceId) {
+        TaskOccurrence o = find(occurrenceId);
+        Task task = tasks.findById(o.getTaskId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tarea no encontrada"));
+
+        if (task.getRecurrenceRule() == null) {
+            tasks.delete(task);
+            return;
+        }
+        // la fila se queda con estado SKIPPED para que el generador no la recree
+        progress.deleteByOccurrenceId(o.getId());
+        o.setCurrentValue(BigDecimal.ZERO);
+        o.setStatus(OccurrenceStatus.SKIPPED);
+    }
+
+    private TaskOccurrence find(Long id) {
+        return occurrences.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Ocurrencia no encontrada"));
     }
 
     private List<OccurrenceResponse> toResponses(List<TaskOccurrence> list) {

@@ -26,9 +26,10 @@ public class StatsService {
     @Transactional(readOnly = true)
     public StatsResponse compute(int weeks) {
         LocalDate today = LocalDate.now();
-        List<TaskOccurrence> all =
-                occurrences.findByOccurrenceDateLessThanEqualOrderByOccurrenceDateAsc(today);
-
+        List<TaskOccurrence> all = occurrences
+                .findByOccurrenceDateLessThanEqualOrderByOccurrenceDateAsc(today).stream()
+                .filter(o -> o.getStatus() != OccurrenceStatus.SKIPPED)
+                .toList();
         Map<LocalDate, List<TaskOccurrence>> grouped = new TreeMap<>();
         for (TaskOccurrence o : all) {
             grouped.computeIfAbsent(o.getOccurrenceDate(), d -> new ArrayList<>()).add(o);

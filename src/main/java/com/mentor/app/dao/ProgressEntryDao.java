@@ -3,4 +3,6 @@ package com.mentor.app.dao;
 import com.mentor.app.domain.ProgressEntry;
 import org.springframework.data.jpa.repository.JpaRepository;
 
-public interface ProgressEntryDao extends JpaRepository<ProgressEntry, Long> { }
+public interface ProgressEntryDao extends JpaRepository<ProgressEntry, Long> {
+    void deleteByOccurrenceId(Long occurrenceId);
+}

@@ -6,6 +6,7 @@ import com.mentor.app.service.OccurrenceService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -30,5 +31,12 @@ public class OccurrenceController {
     @PostMapping("/{id}/progress")
     public OccurrenceResponse addProgress(@PathVariable Long id, @Valid @RequestBody ProgressRequest r) {
         return service.addProgress(id, r);
+    }
+
+    // omite ese día; si la tarea es ocasional, la elimina
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void skip(@PathVariable Long id) {
+        service.skip(id);
     }
 }

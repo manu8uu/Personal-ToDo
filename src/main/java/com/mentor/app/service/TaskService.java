@@ -3,6 +3,7 @@ package com.mentor.app.service;
 import com.mentor.app.dao.GoalDao;
 import com.mentor.app.dao.TaskDao;
 import com.mentor.app.dao.TaskOccurrenceDao;
+import com.mentor.app.domain.OccurrenceStatus;
 import com.mentor.app.domain.Task;
 import com.mentor.app.domain.TaskOccurrence;
 import com.mentor.app.dto.Dtos.TaskRequest;
@@ -50,8 +51,7 @@ public class TaskService {
     // edita la plantilla; las ocurrencias que ya existen no se tocan
     @Transactional
     public Task update(Long id, TaskRequest r) {
-        Task t = tasks.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tarea no encontrada"));
+        Task t = find(id);
         apply(t, r);
         if (t.getRecurrenceRule() != null) {
             recurrence.generateFor(t, LocalDate.now());
@@ -59,12 +59,34 @@ public class TaskService {
         return t;
     }
 
+    // scope "all": borra la tarea con todo su historial
+    // scope "future": la elimina desde hoy y conserva los días anteriores
     @Transactional
-    public void delete(Long id) {
-        if (!tasks.existsById(id)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tarea no encontrada");
+    public void delete(Long id, String scope) {
+        Task t = find(id);
+        switch (scope.toLowerCase()) {
+            case "all" -> tasks.delete(t);
+            case "future" -> stopFromToday(t);
+            default -> throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "scope debe ser 'all' o 'future'");
         }
-        tasks.deleteById(id);
+    }
+
+    private void stopFromToday(Task t) {
+        LocalDate today = LocalDate.now();
+        occurrences.deleteByTaskIdAndOccurrenceDateGreaterThanEqual(t.getId(), today);
+
+        // si no queda nada visible del pasado, se borra la tarea entera
+        if (!occurrences.existsByTaskIdAndStatusNot(t.getId(), OccurrenceStatus.SKIPPED)) {
+            tasks.delete(t);
+            return;
+        }
+        t.setEndDate(today.minusDays(1));
+    }
+
+    private Task find(Long id) {
+        return tasks.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tarea no encontrada"));
     }
 
     private void apply(Task t, TaskRequest r) {

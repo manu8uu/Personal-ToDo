@@ -281,6 +281,97 @@ class ApiIntegrationTest {
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
+        // ---------- eliminar tareas recurrentes ----------
+
+    private static final String DIARIA = taskJson("Leer", "paginas", "20", "\"recurrenceRule\":\"FREQ=DAILY\"");
+
+    @Test
+    @DisplayName("omitir un día de una tarea diaria lo oculta y no se regenera")
+    void omitirDia() throws Exception {
+        long taskId = createTask(DIARIA);
+
+        doDelete("/api/occurrences/" + todayOccurrenceId(taskId)).andExpect(status().isNoContent());
+
+        doGet("/api/occurrences").andExpect(jsonPath("$.length()").value(0));
+        recurrence.refresh();
+        doGet("/api/occurrences").andExpect(jsonPath("$.length()").value(0));
+        // la fila omitida sigue ahí, sin duplicados
+        assertThat(count("task_occurrence")).isEqualTo(29);
+    }
+
+    @Test
+    @DisplayName("omitir un día con progreso borra ese progreso")
+    void omitirDiaBorraProgreso() throws Exception {
+        long occId = todayOccurrenceId(createTask(DIARIA));
+        addProgress(occId, "5");
+
+        doDelete("/api/occurrences/" + occId).andExpect(status().isNoContent());
+
+        assertThat(count("progress_entry")).isZero();
+    }
+
+    @Test
+    @DisplayName("no se puede registrar progreso en un día omitido")
+    void progresoEnDiaOmitido() throws Exception {
+        long occId = todayOccurrenceId(createTask(DIARIA));
+        doDelete("/api/occurrences/" + occId).andExpect(status().isNoContent());
+
+        addProgress(occId, "1").andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("omitir la única ocurrencia de una tarea ocasional borra la tarea")
+    void omitirOcasionalBorraTarea() throws Exception {
+        long taskId = createTask(taskJson("Una vez", "h", "1", null));
+
+        doDelete("/api/occurrences/" + occurrenceIdOf(taskId)).andExpect(status().isNoContent());
+
+        assertThat(count("task")).isZero();
+    }
+
+    @Test
+    @DisplayName("eliminar una serie desde hoy conserva el historial anterior")
+    void eliminarSerieConservaHistorial() throws Exception {
+        LocalDate hoy = LocalDate.now();
+        long taskId = createTask(taskJson("Leer", "paginas", "20",
+                "\"recurrenceRule\":\"FREQ=DAILY\",\"startDate\":\"" + hoy.minusDays(3) + "\""));
+        for (int d = 2; d >= 1; d--) {
+            jdbc.update("INSERT INTO task_occurrence "
+                    + "(task_id, occurrence_date, target_value, current_value, status) "
+                    + "VALUES (?, ?, 20, 20, 'DONE')", taskId, hoy.minusDays(d));
+        }
+
+        doDelete("/api/tasks/" + taskId + "?scope=future").andExpect(status().isNoContent());
+
+        assertThat(count("task_occurrence")).isEqualTo(2);
+        doGet("/api/occurrences").andExpect(jsonPath("$.length()").value(0));
+        String fin = jdbc.queryForObject(
+                "SELECT to_char(end_date, 'YYYY-MM-DD') FROM task WHERE id = ?", String.class, taskId);
+        assertThat(fin).isEqualTo(hoy.minusDays(1).toString());
+
+        recurrence.refresh();
+        assertThat(count("task_occurrence")).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("eliminar una serie sin historial borra la tarea entera")
+    void eliminarSerieSinHistorial() throws Exception {
+        long taskId = createTask(DIARIA);
+
+        doDelete("/api/tasks/" + taskId + "?scope=future").andExpect(status().isNoContent());
+
+        assertThat(count("task")).isZero();
+        assertThat(count("task_occurrence")).isZero();
+    }
+
+    @Test
+    @DisplayName("un alcance de borrado desconocido se rechaza")
+    void alcanceInvalido() throws Exception {
+        long taskId = createTask(DIARIA);
+
+        doDelete("/api/tasks/" + taskId + "?scope=otro").andExpect(status().isBadRequest());
+    }
+
     // ---------- utilidades ----------
 
     private ResultActions doGet(String url) throws Exception {
@@ -321,6 +412,13 @@ class ApiIntegrationTest {
 
     private long occurrenceIdOf(long taskId) {
         Long id = jdbc.queryForObject("SELECT id FROM task_occurrence WHERE task_id = ?", Long.class, taskId);
+        assertThat(id).isNotNull();
+        return id;
+    }
+        private long todayOccurrenceId(long taskId) {
+        Long id = jdbc.queryForObject(
+                "SELECT id FROM task_occurrence WHERE task_id = ? AND occurrence_date = ?",
+                Long.class, taskId, LocalDate.now());
         assertThat(id).isNotNull();
         return id;
     }
